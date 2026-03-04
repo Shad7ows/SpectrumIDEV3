@@ -21,6 +21,13 @@ public:
     QAction* exitAction;
     QAction* runAction;
     QAction* aboutAction;
+    QAction* undoAct;
+    QAction* redoAct;
+    QAction* cutAct;
+    QAction* copyAct;
+    QAction* pasteAct;
+    QAction* findAct;
+    QAction* replaceAct;
 
 signals:
     void newRequested();

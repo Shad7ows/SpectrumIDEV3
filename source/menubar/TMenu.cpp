@@ -25,12 +25,12 @@ TMenuBar::TMenuBar(QWidget* parent) {
     )");
 
     QMenu* fileMenu = addMenu("ملف");
-    //QMenu* editMenu = addMenu("تحرير");
+    QMenu* editMenu = addMenu("تحرير");
     QMenu* runMenu = addMenu("تشغيل");
     QMenu* helpMenu = addMenu("مساعدة");
 
     fileMenu->setMinimumWidth(200);
-    //editMenu->setMinimumWidth(200);
+    editMenu->setMinimumWidth(200);
     runMenu->setMinimumWidth(200);
     helpMenu->setMinimumWidth(200);
 
@@ -47,6 +47,15 @@ TMenuBar::TMenuBar(QWidget* parent) {
     QAction* aboutAction = new QAction("عن المحرر", parent);
     QAction* updateAction = new QAction("البحث عن تحديثات", parent);
 
+    undoAct = new QAction(tr("تراجع (Undo)"), this);
+    redoAct = new QAction(tr("إعادة (Redo)"), this);
+    cutAct = new QAction(tr("قص (Cut)"), this);
+    copyAct = new QAction(tr("نسخ (Copy)"), this);
+    pasteAct = new QAction(tr("لصق (Paste)"), this);
+    findAct = new QAction(tr("بحث (Find...)"), this);
+    replaceAct = new QAction(tr("استبدال (Replace...)"), this);
+
+
     fileMenu->addAction(newAction);
     fileMenu->addAction(openFileAction);
     fileMenu->addAction(openFolderAction);
@@ -61,6 +70,27 @@ TMenuBar::TMenuBar(QWidget* parent) {
 
     helpMenu->addAction(aboutAction);
     helpMenu->addAction(updateAction);
+
+    editMenu->addAction(undoAct);
+    editMenu->addAction(redoAct);
+    editMenu->addSeparator();
+    editMenu->addAction(cutAct);
+    editMenu->addAction(copyAct);
+    editMenu->addAction(pasteAct);
+    editMenu->addSeparator();
+    editMenu->addAction(findAct);
+    editMenu->addAction(replaceAct);
+
+    undoAct->setShortcuts(QKeySequence::Undo);
+    redoAct->setShortcuts(QKeySequence::Redo);
+    cutAct->setShortcuts(QKeySequence::Cut);
+    copyAct->setShortcuts(QKeySequence::Copy);
+    pasteAct->setShortcuts(QKeySequence::Paste);
+    findAct->setShortcuts(QKeySequence::Find);
+    replaceAct->setShortcuts(QKeySequence::Replace);
+
+
+
 
 
     QString style = R"(
@@ -89,7 +119,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
         }
 )";
     fileMenu->setStyleSheet(style);
-    //editMenu->setStyleSheet(style);
+    editMenu->setStyleSheet(style);
     runMenu->setStyleSheet(style);
     helpMenu->setStyleSheet(style);
 
@@ -106,5 +136,21 @@ TMenuBar::TMenuBar(QWidget* parent) {
 
     connect(aboutAction, &QAction::triggered, this, &TMenuBar::aboutRequested);
     connect(updateAction, &QAction::triggered, this, &TMenuBar::updateRequested);
+
+
+    // connect(undoAct, &QAction::triggered, this, &TMenuBar::undo); // استبدل QPlainTextEdit بنوع المكون الخاص بك إذا كان مختلفاً
+
+    // connect(redoAct, &QAction::triggered, this, &TMenuBar::redo);
+
+    // connect(cutAct, &QAction::triggered, this, &TMenuBar::cut);
+
+    // connect(copyAct, &QAction::triggered, this, &TMenuBar::copy);
+
+    // connect(pasteAct, &QAction::triggered, this, &TMenuBar::paste);
+
+    // connect(findAct, &QAction::triggered, this, &TMenuBar::showFindBar);
+
+    // connect(replaceAct, &QAction::triggered, this, &TMenuBar::showReplaceBar);
+
 }
 

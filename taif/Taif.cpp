@@ -179,6 +179,8 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(searchBar, &SearchPanel::findText, this, &Taif::findText);
     connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
     connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
+    connect(searchBar, &SearchPanel::replaceRequested, this, &Taif::replaceText);
+    connect(searchBar, &SearchPanel::replaceAllRequested, this, &Taif::replaceAllText);
     onCurrentTabChanged();
 
     QShortcut *goToLineShortcut = new QShortcut(QKeySequence("Ctrl+G"), this);
@@ -203,6 +205,29 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(moveDownShortcut, &QShortcut::activated, this, [this](){
         if (TEditor* editor = currentEditor()) editor->moveLineDown();
     });
+
+    connect(menuBar->undoAct, &QAction::triggered, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->undo();
+    });
+
+    connect(menuBar->redoAct, &QAction::triggered, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->redo();
+    });
+
+    connect(menuBar->cutAct, &QAction::triggered, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->cut();
+    });
+
+    connect(menuBar->copyAct, &QAction::triggered, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->copy();
+    });
+
+    connect(menuBar->pasteAct, &QAction::triggered, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->paste();
+    });
+
+    // ربط زر البحث من القائمة العلوية بشريط البحث الذي صنعته مسبقاً!
+    connect(menuBar->findAct, &QAction::triggered, this, &Taif::showFindBar);
 
     // ===================================================================
     //  الخطوة 7: تطبيق التصميم (QSS)
@@ -574,6 +599,60 @@ void Taif::toggleConsole()
         if (QWidget* w = consoleTabWidget->currentWidget()) w->setFocus();
     } else {
         if (TEditor* editor = currentEditor()) editor->setFocus();
+    }
+}
+
+void Taif::replaceText() {
+    TEditor* editor = currentEditor();
+    if (!editor) return;
+
+    QString target = searchBar->getText();
+    QString replacement = searchBar->getReplaceText();
+
+    if (target.isEmpty()) return;
+
+    QTextCursor cursor = editor->textCursor();
+
+    // التحقق مما إذا كان النص المحدد يطابق كلمة البحث
+    if (cursor.hasSelection() && cursor.selectedText() == target) {
+        cursor.insertText(replacement);
+    }
+
+    // الانتقال للكلمة التالية تلقائياً بعد الاستبدال
+    findNextText();
+}
+
+void Taif::replaceAllText() {
+    TEditor* editor = currentEditor();
+    if (!editor) return;
+
+    QString target = searchBar->getText();
+    QString replacement = searchBar->getReplaceText();
+
+    if (target.isEmpty()) return;
+
+    // حفظ مكان المؤشر للعودة إليه لاحقاً
+    QTextCursor originalCursor = editor->textCursor();
+
+    // الانتقال لبداية الملف للبحث في كل المستند
+    editor->moveCursor(QTextCursor::Start);
+
+    int count = 0;
+    QTextDocument::FindFlags flags;
+    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
+
+    // البحث والاستبدال في حلقة تكرارية
+    while (editor->find(target, flags)) {
+        editor->textCursor().insertText(replacement);
+        count++;
+    }
+
+    if (count == 0) {
+        editor->setTextCursor(originalCursor);
+        QApplication::beep();
+    } else {
+        editor->setTextCursor(originalCursor);
+        QMessageBox::information(this, "استبدال الكل", QString("تم استبدال %1 كلمة بنجاح.").arg(count));
     }
 }
 

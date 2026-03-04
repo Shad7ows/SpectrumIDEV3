@@ -58,6 +58,9 @@ private slots:
 
     void goToLine();
 
+    void replaceText();
+    void replaceAllText();
+
 private:
     int needSave();
     TEditor* currentEditor();
