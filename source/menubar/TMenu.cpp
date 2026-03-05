@@ -26,9 +26,11 @@ TMenuBar::TMenuBar(QWidget* parent) {
 
     QMenu* fileMenu = addMenu("ملف");
     QMenu* editMenu = addMenu("تحرير");
+    QMenu* viewMenu = addMenu("عرض");
     QMenu* runMenu = addMenu("تشغيل");
     QMenu* helpMenu = addMenu("مساعدة");
 
+    viewMenu->setMinimumWidth(200);
     fileMenu->setMinimumWidth(200);
     editMenu->setMinimumWidth(200);
     runMenu->setMinimumWidth(200);
@@ -47,13 +49,21 @@ TMenuBar::TMenuBar(QWidget* parent) {
     QAction* aboutAction = new QAction("عن المحرر", parent);
     QAction* updateAction = new QAction("البحث عن تحديثات", parent);
 
-    undoAct = new QAction(tr("تراجع (Undo)"), this);
-    redoAct = new QAction(tr("إعادة (Redo)"), this);
-    cutAct = new QAction(tr("قص (Cut)"), this);
-    copyAct = new QAction(tr("نسخ (Copy)"), this);
-    pasteAct = new QAction(tr("لصق (Paste)"), this);
-    findAct = new QAction(tr("بحث (Find...)"), this);
-    replaceAct = new QAction(tr("استبدال (Replace...)"), this);
+    undoAct = new QAction(tr("تراجع"), this);
+    redoAct = new QAction(tr("إعادة"), this);
+    cutAct = new QAction(tr("قص"), this);
+    copyAct = new QAction(tr("نسخ"), this);
+    pasteAct = new QAction(tr("لصق"), this);
+    findAct = new QAction(tr("بحث"), this);
+    replaceAct = new QAction(tr("استبدال"), this);
+    toggleSidebarAct = new QAction("متصفح الملفات", this);
+    toggleSidebarAct->setCheckable(true);
+
+    toggleConsoleAct = new QAction("الطرفية", this);
+    toggleConsoleAct->setCheckable(true);
+    fullScreenAct = new QAction("ملء الشاشة", this);
+    fullScreenAct->setCheckable(true);
+
 
 
     fileMenu->addAction(newAction);
@@ -81,6 +91,11 @@ TMenuBar::TMenuBar(QWidget* parent) {
     editMenu->addAction(findAct);
     editMenu->addAction(replaceAct);
 
+    viewMenu->addAction(toggleSidebarAct);
+    viewMenu->addAction(toggleConsoleAct);
+    viewMenu->addSeparator();
+    viewMenu->addAction(fullScreenAct);
+
     undoAct->setShortcuts(QKeySequence::Undo);
     redoAct->setShortcuts(QKeySequence::Redo);
     cutAct->setShortcuts(QKeySequence::Cut);
@@ -90,6 +105,8 @@ TMenuBar::TMenuBar(QWidget* parent) {
     replaceAct->setShortcuts(QKeySequence::Replace);
 
 
+    toggleConsoleAct->setShortcut(QKeySequence(Qt::Key_F6));
+    fullScreenAct->setShortcut(QKeySequence::FullScreen);
 
 
 
@@ -122,6 +139,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     editMenu->setStyleSheet(style);
     runMenu->setStyleSheet(style);
     helpMenu->setStyleSheet(style);
+    viewMenu->setStyleSheet(style);
 
 
     connect(newAction, &QAction::triggered, this, &TMenuBar::newRequested);
@@ -136,21 +154,6 @@ TMenuBar::TMenuBar(QWidget* parent) {
 
     connect(aboutAction, &QAction::triggered, this, &TMenuBar::aboutRequested);
     connect(updateAction, &QAction::triggered, this, &TMenuBar::updateRequested);
-
-
-    // connect(undoAct, &QAction::triggered, this, &TMenuBar::undo); // استبدل QPlainTextEdit بنوع المكون الخاص بك إذا كان مختلفاً
-
-    // connect(redoAct, &QAction::triggered, this, &TMenuBar::redo);
-
-    // connect(cutAct, &QAction::triggered, this, &TMenuBar::cut);
-
-    // connect(copyAct, &QAction::triggered, this, &TMenuBar::copy);
-
-    // connect(pasteAct, &QAction::triggered, this, &TMenuBar::paste);
-
-    // connect(findAct, &QAction::triggered, this, &TMenuBar::showFindBar);
-
-    // connect(replaceAct, &QAction::triggered, this, &TMenuBar::showReplaceBar);
 
 }
 

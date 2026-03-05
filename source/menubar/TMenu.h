@@ -28,6 +28,10 @@ public:
     QAction* pasteAct;
     QAction* findAct;
     QAction* replaceAct;
+    // أزرار قائمة عرض
+    QAction* toggleSidebarAct;
+    QAction* toggleConsoleAct;
+    QAction* fullScreenAct;
 
 signals:
     void newRequested();

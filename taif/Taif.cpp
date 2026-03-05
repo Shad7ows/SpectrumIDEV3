@@ -226,7 +226,14 @@ Taif::Taif(const QString& filePath, QWidget *parent)
         if (TEditor* editor = currentEditor()) editor->paste();
     });
 
-    // ربط زر البحث من القائمة العلوية بشريط البحث الذي صنعته مسبقاً!
+    connect(menuBar->toggleSidebarAct, &QAction::triggered, this, &Taif::toggleSidebar);
+    connect(menuBar->toggleConsoleAct, &QAction::triggered, this, &Taif::toggleConsole);
+
+    connect(menuBar->fullScreenAct, &QAction::triggered, this, [this](bool checked){
+        if (checked) this->showFullScreen();
+        else this->showNormal();
+    });
+
     connect(menuBar->findAct, &QAction::triggered, this, &Taif::showFindBar);
 
     // ===================================================================
