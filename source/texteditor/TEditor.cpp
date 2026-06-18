@@ -1,5 +1,6 @@
 #include "TEditor.h"
 #include "TMinimap.h"
+#include "TSyntaxDefinition.h"
 
 #include <QPainter>
 #include <QTextBlock>
@@ -11,6 +12,8 @@
 #include <QMenu>
 #include <QAction>
 #include <QFile>
+#include <QRegularExpression>
+#include <QTextLayout>
 
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
@@ -83,6 +86,26 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
 
     installEventFilter(this);
+    // هذه لاظهار لقائمة الشرح
+    viewport()->setMouseTracking(true);
+
+    hoverLabel = new QLabel(viewport());
+    hoverLabel->setWindowFlags(Qt::ToolTip | Qt::FramelessWindowHint);
+    hoverLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    hoverLabel->setStyleSheet(
+        "QLabel { background-color: #0f172a; color: #e2e8f0; "
+        "border: 1px solid #334155; border-radius: 6px; "
+        "padding: 8px 12px; font-size: 13px; font-family: 'Noto Kufi Arabic'; }"
+    );
+    hoverLabel->setWordWrap(true);
+    hoverLabel->setMaximumWidth(350);
+    hoverLabel->hide();
+
+    hoverTimer.setSingleShot(true);
+    hoverTimer.setInterval(1000);
+    connect(&hoverTimer, &QTimer::timeout, this, [this]() {
+        showHoverAt(hoverLine, hoverCol);
+    });
 }
 
 void TEditor::UpdateTabStopDistance(QFont font) {
@@ -363,6 +386,325 @@ void TEditor::showEvent(QShowEvent* event) {
     }
 }
 
+// كشف الكلمة تحت المؤشر وعرض معلومات التمرير (hover) بعد تأخير
+
+void TEditor::mouseMoveEvent(QMouseEvent *event) {
+    QPoint pos = event->pos();
+
+    QString foundWord;
+    int foundLine = -1;
+    int foundStart = -1;
+
+    QTextBlock block = firstVisibleBlock();
+    while (block.isValid()) {
+        QRectF blockRect = blockBoundingGeometry(block).translated(contentOffset());
+        if (pos.y() >= blockRect.top() && pos.y() <= blockRect.bottom()) {
+            foundLine = block.blockNumber();
+            QString lineText = block.text();
+            QTextLayout *layout = block.layout();
+            if (!layout) break;
+
+            // Find which visual line the mouse is on
+            QTextLine textLine;
+            for (int i = 0; i < layout->lineCount(); ++i) {
+                QTextLine l = layout->lineAt(i);
+                qreal ly = blockRect.top() + l.y();
+                if (pos.y() >= ly && pos.y() <= ly + l.height()) {
+                    textLine = l;
+                    break;
+                }
+            }
+            if (!textLine.isValid()) break;
+
+            // Find character at mouse x position
+            int charIdx = textLine.xToCursor(pos.x() - blockRect.left());
+            if (charIdx < 0 || charIdx >= lineText.size()) break;
+
+            // Expand to full word
+            if (lineText[charIdx].isLetterOrNumber() || lineText[charIdx] == '_') {
+                int s = charIdx;
+                while (s > 0 && (lineText[s - 1].isLetterOrNumber() || lineText[s - 1] == '_'))
+                    s--;
+                int e = charIdx;
+                while (e < lineText.size() && (lineText[e].isLetterOrNumber() || lineText[e] == '_'))
+                    e++;
+                foundWord = lineText.mid(s, e - s);
+                foundStart = s;
+            }
+            break;
+        }
+        block = block.next();
+    }
+
+    if (foundWord == hoverWord && foundLine == hoverLine) {
+        QPlainTextEdit::mouseMoveEvent(event);
+        return;
+    }
+
+    hoverWord = foundWord;
+    hoverLine = foundLine;
+    hoverCol = foundStart;
+
+    if (hoverWord.isEmpty()) {
+        hoverLabel->hide();
+    } else {
+        hoverTimer.start();
+    }
+
+    QPlainTextEdit::mouseMoveEvent(event);
+}
+
+void TEditor::hideHover() {
+    hoverTimer.stop();
+    hoverLabel->hide();
+    hoverWord.clear();
+}
+
+void TEditor::leaveEvent(QEvent *event) {
+    hideHover();
+    QPlainTextEdit::leaveEvent(event);
+}
+
+void TEditor::showHoverAt(int line, int col) {
+    QTextBlock block = document()->findBlockByNumber(line);
+    if (!block.isValid()) { hideHover(); return; }
+
+    QString text = block.text();
+    if (col < 0 || col >= text.size()) { hideHover(); return; }
+
+    int start = col;
+    while (start > 0 && (text[start - 1].isLetterOrNumber() || text[start - 1] == '_'))
+        start--;
+    int end = col;
+    while (end < text.size() && (text[end].isLetterOrNumber() || text[end] == '_'))
+        end++;
+
+    QString word = text.mid(start, end - start);
+    if (word.isEmpty()) { hideHover(); return; }
+
+    LanguageDefinition langDef;
+    QString tooltip;
+
+    // Compound: "والا اذا"
+    if (word == "وإلا" || word == "والا") {
+        int peek = end;
+        while (peek < text.size() && text[peek] == ' ') peek++;
+        if (text.mid(peek, 2) == "اذا" || text.mid(peek, 2) == "إذا") {
+            tooltip = QString("<div style='font-size:15px;font-weight:bold;color:#60a5fa'>وإلا اذا</div>"
+                              "<div style='color:#94a3b8;margin-top:4px'>جملة شرطية بديلة — تُنفذ إذا لم يتحقق الشرط السابق</div>");
+            hoverLabel->setText(tooltip);
+            hoverLabel->adjustSize();
+            QTextBlock b = document()->findBlockByNumber(hoverLine);
+            QTextCursor tc(b);
+            tc.setPosition(b.position() + end + 4);
+            QRect cr = QPlainTextEdit::cursorRect(tc);
+            QPoint globalPos = viewport()->mapToGlobal(cr.bottomLeft());
+            hoverLabel->move(globalPos.x(), globalPos.y() + 4);
+            hoverLabel->show();
+            return;
+        }
+    }
+    if (word == "أوإذا" || word == "اواذا") {
+        tooltip = QString("<div style='font-size:15px;font-weight:bold;color:#60a5fa'>أوإذا</div>"
+                          "<div style='color:#94a3b8;margin-top:4px'>جملة شرطية بديلة — تُنفذ إذا لم يتحقق الشرط السابق</div>");
+        hoverLabel->setText(tooltip);
+        hoverLabel->adjustSize();
+        QTextBlock b = document()->findBlockByNumber(hoverLine);
+        QTextCursor tc(b);
+        tc.setPosition(b.position() + end);
+        QRect cr = QPlainTextEdit::cursorRect(tc);
+        QPoint globalPos = viewport()->mapToGlobal(cr.bottomLeft());
+        hoverLabel->move(globalPos.x(), globalPos.y() + 4);
+        hoverLabel->show();
+        return;
+    }
+
+    // "دالة" or "صنف" keyword — show keyword info + the name after it
+    if (word == "دالة" || word == "صنف") {
+        bool isFunc = (word == "دالة");
+        QString kindColor = isFunc ? "#34d399" : "#fbbf24";
+        QString kindName = isFunc ? "دالة" : "صنف";
+        QString keywordDesc = isFunc ? "تعريف دالة جديدة" : "تعريف صنف جديد";
+
+        int peek = end;
+        while (peek < text.size() && text[peek] == ' ') peek++;
+        int nameStart = peek;
+        while (peek < text.size() && (text[peek].isLetterOrNumber() || text[peek] == '_'))
+            peek++;
+        QString defName = (peek > nameStart) ? text.mid(nameStart, peek - nameStart) : QString();
+
+        QString doc;
+        QTextBlock prevBlock = document()->findBlockByNumber(line - 1);
+        while (prevBlock.isValid()) {
+            QString prevText = prevBlock.text().trimmed();
+            if (prevText.startsWith('#')) { doc = prevText.mid(1).trimmed(); break; }
+            if (!prevText.isEmpty()) break;
+            prevBlock = prevBlock.previous();
+        }
+
+        tooltip = QString("<div style='font-size:15px;font-weight:bold;color:%1'>%2</div>"
+                          "<div style='color:#94a3b8;margin-top:4px'>%3</div>")
+                      .arg(kindColor, kindName, keywordDesc);
+        if (!defName.isEmpty()) {
+            tooltip += QString("<div style='color:#e2e8f0;margin-top:6px;font-size:14px;'>%1 <span style='color:%2'>%3</span></div>")
+                           .arg(kindName, kindColor, defName.toHtmlEscaped());
+        }
+        if (!doc.isEmpty()) {
+            tooltip += QString("<div style='color:#94a3b8;margin-top:4px;border-top:1px solid #334155;padding-top:4px'>%1</div>")
+                           .arg(doc.toHtmlEscaped());
+        }
+
+        hoverLabel->setText(tooltip);
+        hoverLabel->adjustSize();
+        QTextBlock b = document()->findBlockByNumber(hoverLine);
+        QTextCursor tc(b);
+        tc.setPosition(b.position() + end);
+        QRect cr = QPlainTextEdit::cursorRect(tc);
+        QPoint globalPos = viewport()->mapToGlobal(cr.bottomLeft());
+        hoverLabel->move(globalPos.x(), globalPos.y() + 4);
+        hoverLabel->show();
+        return;
+    }
+
+    QRegularExpression reDef(
+        QString("(?:^|\\s)(دالة|صنف)\\s+%1(?:\\s|$|[\\(\\)])").arg(QRegularExpression::escape(word)),
+        QRegularExpression::MultilineOption
+    );
+    QTextCursor foundDef = document()->find(reDef);
+    if (!foundDef.isNull()) {
+        int defLine = foundDef.blockNumber() + 1;
+        QString defText = foundDef.block().text().trimmed();
+        bool isFunc = defText.startsWith("دالة");
+        QString kind = isFunc ? "دالة" : "صنف";
+        QString kindColor = isFunc ? "#34d399" : "#fbbf24";
+
+        QString doc;
+        QTextBlock prevBlock = document()->findBlockByNumber(foundDef.blockNumber() - 1);
+        while (prevBlock.isValid()) {
+            QString prevText = prevBlock.text().trimmed();
+            if (prevText.startsWith('#')) { doc = prevText.mid(1).trimmed(); break; }
+            if (!prevText.isEmpty()) break;
+            prevBlock = prevBlock.previous();
+        }
+
+        tooltip = QString("<div style='font-size:15px;font-weight:bold;color:%1'>%2 <span style='color:#e2e8f0'>%3</span></div>"
+                          "<div style='color:#94a3b8;margin-top:4px'>معرّفة في السطر %4</div>")
+                      .arg(kindColor, kind, word.toHtmlEscaped()).arg(defLine);
+        if (!doc.isEmpty()) {
+            tooltip += QString("<div style='color:#94a3b8;margin-top:4px;border-top:1px solid #334155;padding-top:4px'>%1</div>")
+                           .arg(doc.toHtmlEscaped());
+        }
+
+        hoverLabel->setText(tooltip);
+        hoverLabel->adjustSize();
+        QTextBlock b = document()->findBlockByNumber(hoverLine);
+        QTextCursor tc(b);
+        tc.setPosition(b.position() + end);
+        QRect cr = QPlainTextEdit::cursorRect(tc);
+        QPoint globalPos = viewport()->mapToGlobal(cr.bottomLeft());
+        hoverLabel->move(globalPos.x(), globalPos.y() + 4);
+        hoverLabel->show();
+        return;
+    }
+
+    // "هذا"
+    if (word == "هذا") {
+        tooltip = QString("<div style='font-size:15px;font-weight:bold;color:#f472b6'>%1</div>"
+                          "<div style='color:#94a3b8;margin-top:4px'>متغير خاص — يشير إلى الكائن الحالي</div>")
+                     .arg(word.toHtmlEscaped());
+    }
+
+    else if (langDef.keywordSet.contains(word)) {
+        QString extra;
+        if (word == "صنف") extra = "تعريف صنف جديد";
+        else if (word == "دالة") extra = "تعريف دالة جديدة";
+        else if (word == "اذا" ) extra = "جملة شرطية — تنفيذ كتلة إذا تحقق الشرط";
+        else if (word == "بينما") extra = "حلقة تكرار شرطية — تستمر ما دام الشرط صحيحاً";
+        else if (word == "لكل") extra = "حلقة تكرار — تمر على كل عنصر في تسلسل";
+        else if (word == "حاول") extra = "بدء كتلة معالجة أخطاء";
+        else if (word == "خلل") extra = "معالجة خطأ معين — بند الاستثناء";
+        else if (word == "نهاية") extra = "يُنفَّذ دائماً بعد المحاولة سواء نجح أو أخطأ";
+        else if (word == "عند") extra = "لإدارة السياق";
+        else if (word == "لاجل") extra = "حلقة في التعبيرات الضمنية";
+        else if (word == "طابق") extra = "مطابقة هيكلية للأنماط";
+        else if (word == "خطية") extra = "دالة مجهولة الاسم — تعبير مختصر";
+        else if ( word == "والا") extra = "بند بديل في الجمل الشرطية";
+        else if ( word == "اواذا") extra = "جملة شرطية بديلة";
+        else if (word == "توقف") extra = "الخروج من الحلقة الحالية";
+        else if (word == "استمر") extra = "انتظار التكرار التالي بدون تنفيذ ما بعده";
+        else if (word == "ارجع") extra = "إرجاع قيمة من الدالة";
+        else if (word == "مرر") extra = "جملة فارغة — لا تفعل شيئاً";
+        else if (word == "ولد") extra = "إنتاج قيمة من مُولِّد";
+        else if (word == "و") extra = "عملية منطقية — الجامعة";
+        else if (word == "او") extra = "عملية منطقية — المانعة";
+        else if (word == "ليس") extra = "نفي منطقي";
+        else if (word == "في") extra = "اختبار العضوية — هل يوجد العنصر في المجموعة؟";
+        else if (word == "هل") extra = "اختبار الهوية — هل الكائنان متساويان؟";
+        else if (word == "عام") extra = "لتعريف متغير في النطاق العام";
+        else if (word == "نطاق") extra = "للإشارة إلى متغير في النطاق الأعلى";
+        else if (word == "احذف") extra = "حذف متغير أو عنصر";
+        else if (word == "متوقع") extra = "جملة تأكيد — تتحقق من صحة شرط";
+        else if (word == "استورد") extra = "استيراد وحدة أو مكتبة";
+        else if (word == "مزامنة") extra = "لتحديد الدالة كغير متزامنة";
+        else if (word == "انتظر") extra = "انتظار نتيجة غير متزامنة";
+        else if (word == "عدم") extra = "قيمة الفراغ — عدم الوجود";
+        else if (word == "صح") extra = "القيمة المنطقية — صحيح";
+        else if (word == "خطا") extra = "القيمة المنطقية — خطأ";
+        else if (word == "ك") extra = "إعطاء اسم بديل";
+        else if (word == "من") extra = "لتحديد مصدر الاستيراد";
+        else extra = "كلمة محجوزة في لغة ألف";
+
+        tooltip = QString("<div style='font-size:15px;font-weight:bold;color:#60a5fa'>%1</div>"
+                          "<div style='color:#94a3b8;margin-top:4px'>%2</div>")
+                     .arg(word.toHtmlEscaped(), extra);
+    }
+
+    else if (langDef.builtinSet.contains(word)) {
+        QString extra;
+        if (word == "اطبع") extra = "طباعة الكائنات إلى المخرجات";
+        else if (word == "ادخل") extra = "قراءة سطر من المدخلات القياسية";
+        else if (word == "طول") extra = "إرجاع طول الكائن — عدد العناصر";
+        else if (word == "اقصى") extra = "إرجاع أكبر عنصر في تسلسل";
+        else if (word == "ادنى") extra = "إرجاع أصغر عنصر في تسلسل";
+        else if (word == "اجمع") extra = "إرجاع مجموع عناصر التسلسل";
+        else if (word == "تحقق_اي") extra = "يُرجع صح إذا كان أي عنصر صحيحاً";
+        else if (word == "هل_نوع") extra = "التحقق مما إذا كان الكائن من نوع معين";
+        else if (word == "صحيح") extra = "نوع العدد الصحيح";
+        else if (word == "عشري") extra = "نوع العدد العشري";
+        else if (word == "منطق") extra = "نوع المنطقي — صحيح أو خطأ";
+        else if (word == "نص") extra = "نوع النص";
+        else if (word == "مصفوفة") extra = "نوع المصفوفة الديناميكية";
+        else if (word == "مترابطة") extra = "تسلسل ثابت لا يتغير";
+        else if (word == "مميزة") extra = "مجموعة قابلة للتعديل";
+        else if (word == "مدى") extra = "نطاق أرقام متسلسلة";
+        else if (word == "نوع") extra = "نوع الكائن";
+        else if (word == "اصل") extra = "للوصول لطرق الفئة الأصل";
+        else if (word == "مقرون") extra = "دمج تسلسلات في مترابطات";
+        else if (word == "فهرس") extra = "فهرس — رقمตำแหนון العنصر";
+        else if (word == "افتح") extra = "فتح ملف للقراءة أو الكتابة";
+        else extra = "دالة أو نوع مدمج في لغة ألف";
+
+        tooltip = QString("<div style='font-size:15px;font-weight:bold;color:#c084fc'>%1</div>"
+                          "<div style='color:#94a3b8;margin-top:4px'>%2</div>")
+                     .arg(word.toHtmlEscaped(), extra);
+    }
+    else {
+        hideHover();
+        return;
+    }
+
+    hoverLabel->setText(tooltip);
+    hoverLabel->adjustSize();
+
+    QTextBlock b = document()->findBlockByNumber(hoverLine);
+    QTextCursor tc(b);
+    tc.setPosition(b.position() + end);
+    QRect cr = QPlainTextEdit::cursorRect(tc);
+    QPoint globalPos = viewport()->mapToGlobal(cr.bottomLeft());
+    hoverLabel->move(globalPos.x(), globalPos.y() + 4);
+    hoverLabel->show();
+}
+
 void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
 
     QPainter painter(lineNumberArea);
@@ -374,7 +716,6 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
     int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
     int bottom = top + qRound(blockBoundingRect(block).height());
 
-    // Arrow pen
     QPen arrowPen(QColor(37, 70, 99));
     arrowPen.setWidth(3);
     arrowPen.setJoinStyle(Qt::RoundJoin);
@@ -444,8 +785,8 @@ void TEditor::updateFoldRegions() {
 
     // we use static array for zero memory allocation per call
     static const QStringView foldTriggers[] = {
-        u"صنف", u"دالة", u"اذا", u"إذا", u"والا", u"وإلا",
-        u"اواذا", u"أوإذا", u"بينما", u"لكل", u"حاول", u"خلل", u"نهاية"
+        u"صنف", u"دالة", u"اذا", u"والا",
+        u"اواذا", u"بينما", u"لكل", u"حاول", u"خلل", u"نهاية"
     };
 
     // Preserve previous fold states
@@ -456,7 +797,6 @@ void TEditor::updateFoldRegions() {
     }
     foldRegions.clear();
 
-    // here we use single-pass O(N) fold detection using a Stack
     struct ActiveFold {
         int startBlock;
         int indent;
@@ -467,7 +807,6 @@ void TEditor::updateFoldRegions() {
     QTextBlock block = document()->firstBlock();
     while (block.isValid()) {
         QString text = block.text();
-        // using QStringView here to avoids making a copy of the string just to trim it
         QStringView trimmed = QStringView(text).trimmed();
 
         if (trimmed.isEmpty()) {
@@ -475,7 +814,6 @@ void TEditor::updateFoldRegions() {
             continue;
         }
 
-        // Fast inline indent calculation
         int indent = 0;
         for (QChar c : text) {
             if (c == u'\t') indent += 8;
@@ -483,7 +821,6 @@ void TEditor::updateFoldRegions() {
             else break;
         }
 
-        // Close fold regions where indentation drops back to or below the parent
         while (!stack.isEmpty() && indent <= stack.top().indent) {
             ActiveFold af = stack.pop();
             if (lastValidBlockNumber > af.startBlock) {
@@ -495,7 +832,6 @@ void TEditor::updateFoldRegions() {
             }
         }
 
-        // now check if the current line starts with any trigger word
         bool isTrigger = false;
         for (const QStringView& trigger : foldTriggers) {
             if (trimmed.startsWith(trigger)) {
@@ -512,7 +848,6 @@ void TEditor::updateFoldRegions() {
         block = block.next();
     }
 
-    // at the end close any unclosed folds remaining at the end of the document
     while (!stack.isEmpty()) {
         ActiveFold af = stack.pop();
         if (lastValidBlockNumber > af.startBlock) {
@@ -528,8 +863,6 @@ void TEditor::updateFoldRegions() {
         lineNumberArea->update();
     }
 
-    // Safely apply visibility using merged intervals (Sweep-Line logic)
-    // to prevents inner child folds from unhiding blocks that belong to a folded parent.
     std::vector<std::pair<int, int>> hiddenIntervals;
     hiddenIntervals.reserve(foldRegions.size());
     for (const FoldRegion& r : foldRegions) {
@@ -538,7 +871,6 @@ void TEditor::updateFoldRegions() {
         }
     }
 
-    // Sort and merge overlapping hidden intervals
     std::sort(hiddenIntervals.begin(), hiddenIntervals.end());
     std::vector<std::pair<int, int>> mergedHidden;
     mergedHidden.reserve(hiddenIntervals.size());
@@ -550,7 +882,6 @@ void TEditor::updateFoldRegions() {
         }
     }
 
-    // Single pass to apply block visibility changes (Here massive UI performance boost :)
     block = document()->firstBlock();
     auto intervalIt = mergedHidden.begin();
     while (block.isValid()) {
@@ -562,7 +893,6 @@ void TEditor::updateFoldRegions() {
 
         bool shouldBeHidden = (intervalIt != mergedHidden.end() && bNum >= intervalIt->first && bNum <= intervalIt->second);
 
-        // Only trigger a state change if necessary to avoid unnecessary Qt paint events
         if (block.isVisible() == shouldBeHidden) {
             block.setVisible(!shouldBeHidden);
         }
@@ -611,12 +941,11 @@ void TEditor::toggleFold(int blockNumber) {
 }
 
 void TEditor::paintEvent(QPaintEvent *event) {
-    // Let the editor draw the actual text first
     QPlainTextEdit::paintEvent(event);
 
     QPainter painter(viewport());
     painter.setRenderHint(QPainter::Antialiasing, true);
-    QPen linePen(QColor(79, 144, 170, 125)); // Light blue, semi-transparent
+    QPen linePen(QColor(79, 144, 170, 125));
     linePen.setWidth(1);
     linePen.setCapStyle(Qt::FlatCap);
     painter.setPen(linePen);
@@ -624,7 +953,6 @@ void TEditor::paintEvent(QPaintEvent *event) {
     qreal tabStopDistance = this->tabStopDistance();
     qreal viewWidth = viewport()->width();
 
-    // Calculate the right edge offset (accounting for margins and horizontal scrolling)
     qreal rightOffset = document()->documentMargin() - contentOffset().x();
 
     QTextBlock block = firstVisibleBlock();
