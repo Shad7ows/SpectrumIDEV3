@@ -4,6 +4,7 @@
 #include <QScrollBar>
 #include <QPlainTextEdit>
 #include <QCompleter>
+#include <QLabel>
 #include <memory>
 
 #include "TSettings.h"
@@ -55,15 +56,24 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void showEvent(QShowEvent* event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
 
     void keyPressEvent(QKeyEvent *e) override;
-    // We override focusOutEvent to close the popup if the user clicks away
     void focusOutEvent(QFocusEvent *e) override;
+    void leaveEvent(QEvent *event) override;
 
     void paintEvent(QPaintEvent *event) override;
 
 private:
     TSyntaxHighlighter* highlighter{};
+    QLabel* hoverLabel{};
+    QTimer hoverTimer{};
+    int hoverLine = -1;
+    int hoverCol = -1;
+    QString hoverWord;
+
+    void showHoverAt(int line, int col);
+    void hideHover();
 
     LineNumberArea* lineNumberArea{};
     TMinimap* minimap{};

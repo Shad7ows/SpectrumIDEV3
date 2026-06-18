@@ -9,6 +9,13 @@ DerivedData
 *.eddx
 *.xopp
 *.DS_Store
-/taif/build
 *.pro.user
 /.obsidian
+taif/release/
+taif/debug/
+taif/build/
+taif/.qtcreator/
+taif/Makefile
+taif/Makefile.*
+taif/.qmake.stash
+taif/Taif_resource.rc
