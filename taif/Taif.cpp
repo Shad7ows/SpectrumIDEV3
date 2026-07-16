@@ -528,7 +528,7 @@ void Taif::openFile(QString filePath) {
             TEditor *newEditor = new TEditor(setting, this);
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
             newEditor->setPlainText(content);
-            newEditor->setProperty("filePath", filePath);
+            newEditor->setDocumentFilePath(filePath);
 
 
             QString backupPath = filePath + ".~";
@@ -672,7 +672,7 @@ void Taif::saveFileAs() {
             out << content;
             file.close();
 
-            editor->setProperty("filePath", fileName);
+            editor->setDocumentFilePath(fileName);
             // ---------------------------------------------------
 
             editor->document()->setModified(false);

@@ -1,4 +1,5 @@
 #include "TEditor.h"
+#include "TLanguageProfile.h"
 #include "TMinimap.h"
 
 #include <QPainter>
@@ -14,6 +15,7 @@
 
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
+    setProperty("languageId", documentLanguageId);
     setAcceptDrops(true);
     this->setStyleSheet(R"(
     QPlainTextEdit {
@@ -83,6 +85,27 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
 
     installEventFilter(this);
+}
+
+void TEditor::setDocumentFilePath(const QString &filePath) {
+    setProperty("filePath", filePath);
+
+    const QString detectedLanguageId = TLanguageRegistry::profileForFilePath(filePath).id;
+    if (documentLanguageId == detectedLanguageId) {
+        return;
+    }
+
+    documentLanguageId = detectedLanguageId;
+    setProperty("languageId", documentLanguageId);
+    emit languageChanged(documentLanguageId);
+}
+
+QString TEditor::documentFilePath() const {
+    return property("filePath").toString();
+}
+
+QString TEditor::languageId() const {
+    return documentLanguageId;
 }
 
 void TEditor::UpdateTabStopDistance(QFont font) {

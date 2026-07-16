@@ -23,7 +23,9 @@ public:
 
     void lineNumberAreaPaintEvent(QPaintEvent* event);
     int lineNumberAreaWidth() const;
-    QString filePath{};
+    void setDocumentFilePath(const QString &filePath);
+    QString documentFilePath() const;
+    QString languageId() const;
 
     QString getCurrentLineIndentation(const QTextCursor &cursor) const;
     void curserIndentation();
@@ -64,6 +66,7 @@ protected:
 
 private:
     TSyntaxHighlighter* highlighter{};
+    QString documentLanguageId{QStringLiteral("plaintext")};
 
     LineNumberArea* lineNumberArea{};
     TMinimap* minimap{};
@@ -109,6 +112,7 @@ private slots:
     void insertCompletion(const QString &completion, CompletionType type);
 signals:
     void openRequest(QString filePath);
+    void languageChanged(const QString &languageId);
 };
 
 

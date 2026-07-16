@@ -14,6 +14,7 @@ RESOURCES += \
 INCLUDEPATH +=  ../source/texteditor \
                 ../source/texteditor/highlighter \
                 ../source/texteditor/autocomplete \
+                ../source/languages \
                 ../source/components \
                 ../source/console \
                 ../source/menubar   \
@@ -21,6 +22,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/settings  \
 
 SOURCES += \
+    ../source/languages/TLanguageProfile.cpp \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
     ../source/texteditor/autocomplete/AutoCompleteUI.cpp \
     ../source/texteditor/highlighter/TLexer.cpp \
@@ -39,6 +41,7 @@ SOURCES += \
     ../source/settings/TSettings.cpp   \
 
 HEADERS += \
+    ../source/languages/TLanguageProfile.h \
     ../source/texteditor/autocomplete/AutoComplete.h \
     ../source/texteditor/autocomplete/AutoCompleteUI.h \
     ../source/texteditor/highlighter/TLexer.h \
